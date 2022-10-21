@@ -20,7 +20,6 @@
  * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
  * STRICT LIABILITY, OR TOR (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *//*
  */
 
 /** @file   average.h
@@ -119,11 +118,12 @@ public:
 		return m_weights_samples.data() + current_sample_idx() * m_n_weights;
 	}
 
-	bool supports_nesting() const override {
-		return true;
+	uint32_t n_nested() const override {
+		return 1;
 	}
 
-	const std::shared_ptr<Optimizer<T>>& nested() const override {
+	const std::shared_ptr<Optimizer<T>>& nested(uint32_t idx) const override {
+		CHECK_THROW(idx == 0);
 		return m_nested;
 	}
 

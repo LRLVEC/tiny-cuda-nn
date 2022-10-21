@@ -20,7 +20,6 @@
  * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
  * STRICT LIABILITY, OR TOR (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *//*
  */
 
 /** @file   gpu_memory.h
@@ -698,13 +697,13 @@ private:
 };
 
 inline std::unordered_map<cudaStream_t, std::shared_ptr<GPUMemoryArena>>& stream_gpu_memory_arenas() {
-	static std::unordered_map<cudaStream_t, std::shared_ptr<GPUMemoryArena>> s_gpu_memory_arenas;
-	return s_gpu_memory_arenas;
+	static auto* stream_gpu_memory_arenas = new std::unordered_map<cudaStream_t, std::shared_ptr<GPUMemoryArena>>{};
+	return *stream_gpu_memory_arenas;
 }
 
 inline std::unordered_map<int, std::shared_ptr<GPUMemoryArena>>& global_gpu_memory_arenas() {
-	static std::unordered_map<int, std::shared_ptr<GPUMemoryArena>> s_gpu_memory_arenas;
-	return s_gpu_memory_arenas;
+	static auto* global_gpu_memory_arenas = new std::unordered_map<int, std::shared_ptr<GPUMemoryArena>>{};
+	return *global_gpu_memory_arenas;
 }
 
 inline GPUMemoryArena::Allocation allocate_workspace(cudaStream_t stream, size_t n_bytes) {

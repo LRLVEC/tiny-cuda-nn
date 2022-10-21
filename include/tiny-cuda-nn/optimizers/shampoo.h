@@ -20,7 +20,6 @@
  * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
  * STRICT LIABILITY, OR TOR (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *//*
  */
 
 /** @file   shampoo.h
@@ -914,8 +913,8 @@ public:
 		return nullptr;
 	}
 
-	bool supports_nesting() const override {
-		return false;
+	uint32_t n_nested() const override {
+		return 0;
 	}
 
 	void update_hyperparams(const json& params) override {

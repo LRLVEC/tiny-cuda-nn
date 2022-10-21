@@ -20,7 +20,6 @@
  * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
  * STRICT LIABILITY, OR TOR (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *//*
  */
 
 /** @file   common.cu
@@ -29,11 +28,14 @@
  */
 
 #include <tiny-cuda-nn/common.h>
+#include <tiny-cuda-nn/gpu_memory.h>
+#include <tiny-cuda-nn/multi_stream.h>
 
 #include <cuda.h>
 
 #include <algorithm>
 #include <cctype>
+#include <unordered_map>
 
 TCNN_NAMESPACE_BEGIN
 

@@ -20,7 +20,6 @@
  * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
  * STRICT LIABILITY, OR TOR (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *//*
  */
 
 /** @file   optimizer.h
@@ -54,8 +53,8 @@ public:
 	virtual uint32_t n_weights() const = 0;
 	virtual T* custom_weights() const = 0;
 
-	virtual bool supports_nesting() const = 0;
-	virtual const std::shared_ptr<Optimizer<T>>& nested() const {
+	virtual uint32_t n_nested() const = 0;
+	virtual const std::shared_ptr<Optimizer<T>>& nested(uint32_t idx = 0) const {
 		throw std::runtime_error{"Optimizer does not support nesting."};
 	}
 
