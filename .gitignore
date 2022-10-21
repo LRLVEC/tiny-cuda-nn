@@ -7,4 +7,6 @@ dist
 /.vs
 CMakeSettings.json
 
-/test
+/test/*
+!/test/psnr.py
+!/test/reference.jpg
