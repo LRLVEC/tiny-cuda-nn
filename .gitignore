@@ -3,6 +3,8 @@
 __pycache__
 build*
 dist
-/.vscode
+# /.vscode
 /.vs
 CMakeSettings.json
+
+/test
