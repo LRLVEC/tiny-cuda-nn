@@ -610,6 +610,16 @@ public:
 		return m_free_intervals.size() != 1 || m_free_intervals.front().size() != m_max_size;
 	}
 
+	size_t block_num() const
+	{
+		return m_allocated_intervals.size();
+	}
+
+	size_t free_block_num() const
+	{
+		return m_free_intervals.size();
+	}
+
 	class Allocation {
 	public:
 		Allocation() = default;
@@ -620,6 +630,7 @@ public:
 		~Allocation() {
 			if (m_workspace) {
 				m_workspace->free(m_offset);
+				m_workspace = nullptr;
 			}
 		}
 

@@ -1,4 +1,4 @@
 {
 	"cmake.generator": "Ninja", // 使用ninja进行编译加速
-	"cmake.buildDirectory": "${workspaceFolder}/build/master/ninja" // 将不同分支的编译输出保存在不同文件夹
+	"cmake.buildDirectory": "${workspaceFolder}/build/memtest/ninja", // 将不同分支的编译输出保存在不同文件夹
 }

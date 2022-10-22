@@ -29,7 +29,8 @@ project(
 	LANGUAGES CXX CUDA
 )
 
-option(TCNN_BUILD_BENCHMARK "Build tiny-cuda-nn example benchmark?" ON)
+option(TCNN_BUILD_BENCHMARK_IMAGE "Build tiny-cuda-nn example benchmark?" ON)
+option(TCNN_BUILD_BENCHMARK_MEMORY "Build tiny-cuda-nn memory benchmark?" ON)
 option(TCNN_BUILD_EXAMPLES "Build tiny-cuda-nn example applications?" ON)
 set(TCNN_CUDA_ARCHITECTURES "" CACHE STRING "Build tiny-cuda-nn for a specific GPU architecture.")
 
@@ -232,6 +233,9 @@ target_link_libraries(tiny-cuda-nn PUBLIC ${CUDA_LIBRARIES} cuda cublas fmt)
 if (TCNN_BUILD_EXAMPLES)
 	add_subdirectory("samples")
 endif()
-if (TCNN_BUILD_BENCHMARK)
+if (TCNN_BUILD_BENCHMARK_IMAGE)
 	add_subdirectory("benchmarks/image")
+endif()
+if (TCNN_BUILD_BENCHMARK_MEMORY)
+	add_subdirectory("benchmarks/memory")
 endif()
