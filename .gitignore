@@ -10,3 +10,6 @@ CMakeSettings.json
 /test/*
 !/test/psnr.py
 !/test/reference.jpg
+
+# unnecessary submodule in other branches
+dependencies/tiny-stl
