@@ -116,7 +116,7 @@ void bench_GPUMemoryArena(std::vector<Action>& actions)
 		}
 		else
 		{
-			blocks[action.id].~Allocation();
+			//blocks[action.id].~Allocation();
 			blocks.erase(action.id);
 			total_size -= action.size;
 		}
@@ -146,7 +146,6 @@ int main(int argc, char* argv[])
 				<< "Warning: Insufficient compute capability " << compute_capability << " detected. "
 				<< "This program was compiled for >=" << MIN_GPU_ARCH << " and may thus behave unexpectedly." << std::endl;
 		}
-		fmt::print("Fuck you!\n");
 
 		// init
 		GPUMemory<float> init(4096);
