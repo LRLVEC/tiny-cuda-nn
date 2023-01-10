@@ -81,6 +81,7 @@ enum class Activation {
 	Sigmoid,
 	Squareplus,
 	Softplus,
+	Tanh,
 	None,
 };
 
@@ -95,6 +96,11 @@ int cuda_device_count();
 bool cuda_supports_virtual_memory(int device);
 inline bool cuda_supports_virtual_memory() {
 	return cuda_supports_virtual_memory(cuda_device());
+}
+
+std::string cuda_device_name(int device);
+inline std::string cuda_device_name() {
+	return cuda_device_name(cuda_device());
 }
 
 uint32_t cuda_compute_capability(int device);
@@ -153,6 +159,7 @@ public:
 	ScopeGuard() = default;
 	ScopeGuard(const std::function<void()>& callback) : mCallback{callback} {}
 	ScopeGuard(std::function<void()>&& callback) : mCallback{std::move(callback)} {}
+	ScopeGuard& operator=(const ScopeGuard& other) = delete;
 	ScopeGuard(const ScopeGuard& other) = delete;
 	ScopeGuard& operator=(ScopeGuard&& other) { std::swap(mCallback, other.mCallback); return *this; }
 	ScopeGuard(ScopeGuard&& other) { *this = std::move(other); }

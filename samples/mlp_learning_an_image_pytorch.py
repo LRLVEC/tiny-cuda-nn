@@ -132,7 +132,7 @@ if __name__ == "__main__":
 	half_dy =  0.5 / resolution[1]
 	xs = torch.linspace(half_dx, 1-half_dx, resolution[0], device=device)
 	ys = torch.linspace(half_dy, 1-half_dy, resolution[1], device=device)
-	xv, yv = torch.meshgrid([xs, ys], indexing="ij")
+	xv, yv = torch.meshgrid([xs, ys])
 
 	xy = torch.stack((yv.flatten(), xv.flatten())).t()
 
@@ -141,14 +141,21 @@ if __name__ == "__main__":
 	write_image(path, image(xy).reshape(img_shape).detach().cpu().numpy())
 	print("done.")
 
-	prev_time = time.time()
+	prev_time = time.perf_counter()
 
 	batch_size = 2**16
 	interval = 10
 
 	print(f"Beginning optimization with {args.n_steps} training steps.")
 
-	traced_image = torch.jit.trace(image, torch.rand([batch_size, 2], device=device, dtype=torch.float32))
+	try:
+		batch = torch.rand([batch_size, 2], device=device, dtype=torch.float32)
+		traced_image = torch.jit.trace(image, batch)
+		traced_image(batch)
+	except:
+		# If tracing causes an error, fall back to regular execution
+		print(f"WARNING: PyTorch JIT trace failed. Performance will be slightly worse than regular.")
+		traced_image = image
 
 	for i in range(args.n_steps):
 		batch = torch.rand([batch_size, 2], device=device, dtype=torch.float32)
@@ -165,7 +172,7 @@ if __name__ == "__main__":
 		if i % interval == 0:
 			loss_val = loss.item()
 			torch.cuda.synchronize()
-			elapsed_time = time.time() - prev_time
+			elapsed_time = time.perf_counter() - prev_time
 			print(f"Step#{i}: loss={loss_val} time={int(elapsed_time*1000000)}[µs]")
 
 			path = f"{i}.jpg"
@@ -175,7 +182,7 @@ if __name__ == "__main__":
 			print("done.")
 
 			# Ignore the time spent saving the image
-			prev_time = time.time()
+			prev_time = time.perf_counter()
 
 			if i > 0 and interval < 1000:
 				interval *= 10
