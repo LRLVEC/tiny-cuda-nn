@@ -86,10 +86,10 @@ std::vector<Action> bench_GPUMemory()
 		if (actions.size() % 1000 == 0)
 		{
 			fmt::print("{}: {} B {} B utilization {:.2f}%\n",
-			actions.size(),
-			total_size,
-			cuda_memory_info().used,
-			100 * float(total_size) / cuda_memory_info().used
+				actions.size(),
+				total_size,
+				cuda_memory_info().used,
+				100 * float(total_size) / cuda_memory_info().used
 			);
 		}
 	}
@@ -98,7 +98,7 @@ std::vector<Action> bench_GPUMemory()
 	return actions;
 }
 
-void bench_GPUMemoryArena(std::vector<Action>& actions)
+void bench_GPUMemoryArena(std::vector<Action>const& actions)
 {
 	std::unordered_map<unsigned int, GPUMemoryArena::Allocation> blocks;
 	size_t total_size(0);
@@ -107,7 +107,7 @@ void bench_GPUMemoryArena(std::vector<Action>& actions)
 	timer.begin();
 
 	unsigned int c0(0);
-	for (Action& action : actions)
+	for (Action const& action : actions)
 	{
 		if (action.isMalloc)
 		{
