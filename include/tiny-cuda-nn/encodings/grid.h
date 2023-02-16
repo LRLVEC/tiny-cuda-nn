@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2022, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification, are permitted
  * provided that the following conditions are met:
@@ -903,6 +903,8 @@ public:
 	virtual size_t level_n_params(uint32_t level) const = 0;
 	virtual size_t level_params_offset(uint32_t level) const = 0;
 
+	virtual const GridOffsetTable& grid_offset_table() const = 0;
+
 	float max_level() const {
 		return m_max_level;
 	}
@@ -1044,8 +1046,8 @@ public:
 					out(elem)[n_output_dims + dim] = 0;
 				});
 			} else {
-				parallel_for_gpu_aos(synced_streams.get(1), num_elements, m_n_to_pad, [num_elements, n_output_dims=m_n_output_dims, out_soa=output->data()] __device__ (size_t elem, size_t dim) {
-					out_soa[elem + (n_output_dims + dim) * num_elements] = 0;
+				parallel_for_gpu(synced_streams.get(1), num_elements * m_n_to_pad, [out=output->data() + num_elements * m_n_output_dims] __device__ (size_t i) {
+					out[i] = 0;
 				});
 			}
 		}
@@ -1369,6 +1371,10 @@ public:
 		}
 
 		return m_offset_table.data[level];
+	}
+
+	const GridOffsetTable& grid_offset_table() const override {
+		return m_offset_table;
 	}
 
 	std::vector<std::pair<uint32_t, uint32_t>> layer_sizes() const override {
