@@ -4,3 +4,6 @@
 [submodule "dependencies/fmt"]
 	path = dependencies/fmt
 	url = https://github.com/fmtlib/fmt
+[submodule "dependencies/glframework"]
+	path = dependencies/glframework
+	url = https://github.com/LRLVEC/glframework.git
