@@ -23,6 +23,7 @@ The following activation functions are supported:
 - `"Sigmoid"` (the logistic function)
 - `"Squareplus"` (defined as `0.5 * (x + sqrt(x*x + 4))`)
 - `"Softplus"` (defined as `log(exp(x) + 1)`)
+- `"Tanh"` (defined as `(exp(x) - exp(-x)) / (exp(x) + exp(-x))`)
 
 
 ### Fully Fused MLP
@@ -37,8 +38,6 @@ Lightning fast implementation of small multi-layer perceptrons (MLPs). Restricte
 	"n_neurons": 128,            // Neurons in each hidden layer.
 	                             // May only be 16, 32, 64, or 128.
 	"n_hidden_layers": 5,        // Number of hidden layers.
-	"feedback_alignment": false  // Use feedback alignment
-	                             // [Lillicrap et al. 2016].
 }
 ```
 
@@ -123,7 +122,7 @@ The number of encoded dimensions is `n_levels * n_features_per_level`.
 	"per_level_scale": 2.0,    // The geometric growth factor, i.e.
 	                           // the factor by which the resolution
 	                           // of each grid is larger (per axis)
-	                           // than that of the preceeding level.
+	                           // than that of the preceding level.
 	"interpolation": "Linear"  // How to interpolate nearby grid
 	                           // lookups. Can be "Nearest", "Linear",
 	                           // or "Smoothstep" (for smooth deri-

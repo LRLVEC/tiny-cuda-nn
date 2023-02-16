@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2022, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification, are permitted
  * provided that the following conditions are met:
@@ -66,7 +66,11 @@ static constexpr uint32_t MIN_GPU_ARCH = TCNN_MIN_GPU_ARCH;
 // 53-60, 62 |                      no |                       70 |  __half (no tensor cores)
 //  <=52, 61 |                      no |                       70 |   float (no tensor cores)
 
-using network_precision_t = std::conditional_t<TCNN_HALF_PRECISION, __half, float>;
+#if TCNN_HALF_PRECISION
+using network_precision_t = __half;
+#else
+using network_precision_t = float;
+#endif
 
 // Optionally: set the precision to `float` to disable tensor cores and debug potential
 //             problems with mixed-precision training.
@@ -81,6 +85,7 @@ enum class Activation {
 	Sigmoid,
 	Squareplus,
 	Softplus,
+	Tanh,
 	None,
 };
 
@@ -95,6 +100,11 @@ int cuda_device_count();
 bool cuda_supports_virtual_memory(int device);
 inline bool cuda_supports_virtual_memory() {
 	return cuda_supports_virtual_memory(cuda_device());
+}
+
+std::string cuda_device_name(int device);
+inline std::string cuda_device_name() {
+	return cuda_device_name(cuda_device());
 }
 
 uint32_t cuda_compute_capability(int device);
@@ -151,14 +161,19 @@ inline uint32_t powi(uint32_t base, uint32_t exponent) {
 class ScopeGuard {
 public:
 	ScopeGuard() = default;
-	ScopeGuard(const std::function<void()>& callback) : mCallback{callback} {}
-	ScopeGuard(std::function<void()>&& callback) : mCallback{std::move(callback)} {}
+	ScopeGuard(const std::function<void()>& callback) : m_callback{callback} {}
+	ScopeGuard(std::function<void()>&& callback) : m_callback{std::move(callback)} {}
+	ScopeGuard& operator=(const ScopeGuard& other) = delete;
 	ScopeGuard(const ScopeGuard& other) = delete;
-	ScopeGuard& operator=(ScopeGuard&& other) { std::swap(mCallback, other.mCallback); return *this; }
+	ScopeGuard& operator=(ScopeGuard&& other) { std::swap(m_callback, other.m_callback); return *this; }
 	ScopeGuard(ScopeGuard&& other) { *this = std::move(other); }
-	~ScopeGuard() { if (mCallback) { mCallback(); } }
+	~ScopeGuard() { if (m_callback) { m_callback(); } }
+
+	void disarm() {
+		m_callback = {};
+	}
 private:
-	std::function<void()> mCallback;
+	std::function<void()> m_callback;
 };
 
 //////////////////////////////////////
@@ -228,7 +243,7 @@ private:
 // Kernel helpers //
 ////////////////////
 
-#ifdef __NVCC__
+#if defined(__NVCC__) || (defined(__clang__) && defined(__CUDA__))
 #define TCNN_HOST_DEVICE __host__ __device__
 #define TCNN_DEVICE __device__
 #define TCNN_HOST __host__
@@ -286,7 +301,7 @@ constexpr uint32_t n_blocks_linear(T n_elements) {
 	return (uint32_t)div_round_up(n_elements, (T)n_threads_linear);
 }
 
-#ifdef __NVCC__
+#if defined(__NVCC__) || (defined(__clang__) && defined(__CUDA__))
 template <typename K, typename T, typename ... Types>
 inline void linear_kernel(K kernel, uint32_t shmem_size, cudaStream_t stream, T n_elements, Types ... args) {
 	if (n_elements <= 0) {

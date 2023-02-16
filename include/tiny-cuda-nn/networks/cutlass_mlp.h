@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2022, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification, are permitted
  * provided that the following conditions are met:
@@ -66,8 +66,8 @@ public:
 		EGradientMode param_gradients_mode = EGradientMode::Overwrite
 	) override;
 
-	void set_params(T* params, T* inference_params, T* backward_params, T* gradients) override;
-	void initialize_params(pcg32& rnd, float* params_full_precision, T* params, T* inference_params, T* backward_params, T* gradients, float scale = 1) override;
+	void set_params_impl(T* params, T* inference_params, T* gradients) override;
+	void initialize_params(pcg32& rnd, float* params_full_precision, float scale = 1) override;
 
 	GPUMatrix<T, RM>& input_weight_matrix(bool inference) {
 		auto& weight_matrices = inference ? m_weight_matrices_inference : m_weight_matrices;
@@ -173,9 +173,6 @@ private:
 	Activation m_output_activation;
 
 	bool m_can_fuse_activation;
-
-	// Graphs
-	CudaGraph m_inference_graph;
 
 	// Storage of params
 	std::vector<GPUMatrix<T, RM>> m_weight_matrices;

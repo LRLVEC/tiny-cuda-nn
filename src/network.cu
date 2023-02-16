@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2022, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification, are permitted
  * provided that the following conditions are met:
@@ -53,6 +53,8 @@ Activation string_to_activation(const std::string& activation_name) {
 		return Activation::Squareplus;
 	} else if (equals_case_insensitive(activation_name, "Softplus")) {
 		return Activation::Softplus;
+	} else if (equals_case_insensitive(activation_name, "Tanh")) {
+		return Activation::Tanh;
 	}
 
 	throw std::runtime_error{fmt::format("Invalid activation name: {}", activation_name)};
@@ -67,6 +69,7 @@ std::string to_string(Activation activation) {
 		case Activation::Sine: return "Sine";
 		case Activation::Squareplus: return "Squareplus";
 		case Activation::Softplus: return "Softplus";
+		case Activation::Tanh: return "Tanh";
 		default: throw std::runtime_error{"Invalid activation."};
 	}
 }
@@ -119,7 +122,7 @@ uint32_t minimum_alignment(const json& network) {
 			default: throw std::runtime_error{fmt::format("FullyFusedMLP only supports 16, 32, 64, and 128 neurons, but got {}. Use CutlassMLP instead if this is a requirement.", n_neurons)};
 		}
 #else
-		throw std::runtime_error{"FullyFusedMLP was not compiled due to insufficient GPU arch of <70."};
+		throw std::runtime_error{"FullyFusedMLP was not compiled due to insufficient GPU arch of <=70."};
 #endif
 	} else {
 		return CutlassMLP<network_precision_t>::REQUIRED_ALIGNMENT();
@@ -139,7 +142,6 @@ Network<T>* create_network(const json& network) {
 	network["n_input_dims"], \
 	network["n_output_dims"], \
 	network.value("n_hidden_layers", 5u), \
-	network.value("feedback_alignment", false), \
 	string_to_activation(network.value("activation", "ReLU")), \
 	string_to_activation(network.value("output_activation", "None")),
 

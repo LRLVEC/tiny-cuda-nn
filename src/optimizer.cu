@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2022, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification, are permitted
  * provided that the following conditions are met:
@@ -72,7 +72,7 @@ Optimizer<T>* create_optimizer(const json& optimizer) {
 #ifdef TCNN_SHAMPOO
 		return new ShampooOptimizer<T>{optimizer};
 #else
-		throw std::runtime_error{"The Shampoo optimizer is only available when compiling with CUDA 11 or higher."};
+		throw std::runtime_error{"Cannot create `ShampooOptimizer` because tiny-cuda-nn was not compiled with cuBLAS and cuSolver."};
 #endif
 	} else {
 		throw std::runtime_error{fmt::format("Invalid optimizer type: {}", optimizer_type)};

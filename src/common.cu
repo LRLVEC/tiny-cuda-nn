@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2022, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification, are permitted
  * provided that the following conditions are met:
@@ -64,6 +64,12 @@ bool cuda_supports_virtual_memory(int device) {
 	int supports_vmm;
 	CU_CHECK_THROW(cuDeviceGetAttribute(&supports_vmm, CU_DEVICE_ATTRIBUTE_VIRTUAL_ADDRESS_MANAGEMENT_SUPPORTED, device));
 	return supports_vmm != 0;
+}
+
+std::string cuda_device_name(int device) {
+	cudaDeviceProp props;
+	CUDA_CHECK_THROW(cudaGetDeviceProperties(&props, device));
+	return props.name;
 }
 
 uint32_t cuda_compute_capability(int device) {

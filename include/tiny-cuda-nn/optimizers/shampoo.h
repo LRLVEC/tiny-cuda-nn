@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2022, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification, are permitted
  * provided that the following conditions are met:
@@ -47,46 +47,27 @@
 
 TCNN_NAMESPACE_BEGIN
 
+inline std::string cublasGetError(cublasStatus_t error) {
+	switch (error) {
+		case CUBLAS_STATUS_SUCCESS: return "CUBLAS_STATUS_SUCCESS";
+		case CUBLAS_STATUS_NOT_INITIALIZED: return "CUBLAS_STATUS_NOT_INITIALIZED";
+		case CUBLAS_STATUS_ALLOC_FAILED: return "CUBLAS_STATUS_ALLOC_FAILED";
+		case CUBLAS_STATUS_INVALID_VALUE: return "CUBLAS_STATUS_INVALID_VALUE";
+		case CUBLAS_STATUS_ARCH_MISMATCH: return "CUBLAS_STATUS_ARCH_MISMATCH";
+		case CUBLAS_STATUS_MAPPING_ERROR: return "CUBLAS_STATUS_MAPPING_ERROR";
+		case CUBLAS_STATUS_EXECUTION_FAILED: return "CUBLAS_STATUS_EXECUTION_FAILED";
+		case CUBLAS_STATUS_INTERNAL_ERROR: return "CUBLAS_STATUS_INTERNAL_ERROR";
+		case CUBLAS_STATUS_NOT_SUPPORTED: return "CUBLAS_STATUS_NOT_SUPPORTED";
+		default: return "<unknown>";
+	}
+}
+
 #define CUBLAS_CHECK_THROW(x)                                                                                           \
 	do {                                                                                                                \
 		cublasStatus_t result = x;                                                                                      \
 		if (result != CUBLAS_STATUS_SUCCESS)                                                                            \
 			throw std::runtime_error(std::string("CUBLAS Error: " #x " failed with error ") + cublasGetError(result));  \
 	} while(0)
-
-inline std::string cublasGetError(cublasStatus_t error) {
-	switch (error) {
-		case CUBLAS_STATUS_SUCCESS:
-			return "CUBLAS_STATUS_SUCCESS";
-
-		case CUBLAS_STATUS_NOT_INITIALIZED:
-			return "CUBLAS_STATUS_NOT_INITIALIZED";
-
-		case CUBLAS_STATUS_ALLOC_FAILED:
-			return "CUBLAS_STATUS_ALLOC_FAILED";
-
-		case CUBLAS_STATUS_INVALID_VALUE:
-			return "CUBLAS_STATUS_INVALID_VALUE";
-
-		case CUBLAS_STATUS_ARCH_MISMATCH:
-			return "CUBLAS_STATUS_ARCH_MISMATCH";
-
-		case CUBLAS_STATUS_MAPPING_ERROR:
-			return "CUBLAS_STATUS_MAPPING_ERROR";
-
-		case CUBLAS_STATUS_EXECUTION_FAILED:
-			return "CUBLAS_STATUS_EXECUTION_FAILED";
-
-		case CUBLAS_STATUS_INTERNAL_ERROR:
-			return "CUBLAS_STATUS_INTERNAL_ERROR";
-
-		case CUBLAS_STATUS_NOT_SUPPORTED:
-			return "CUBLAS_STATUS_NOT_SUPPORTED";
-	}
-
-	return "<unknown>";
-}
-
 
 template <typename T>
 __global__ void subtract(
@@ -415,8 +396,6 @@ public:
 		m_n_weights_covered_by_matrices = total_MN;
 		m_matrix_batches.emplace_back(current_idx, layer_sizes.size());
 
-		m_inverse_pth_root_graphs.resize(m_matrix_batches.size() * 4);
-
 		GPUMatrixBase::allocate_shared_memory(m_L_buffer, m_L);
 		GPUMatrixBase::allocate_shared_memory(m_L_root_buffer, m_L_root);
 		GPUMatrixBase::allocate_shared_memory(m_R_buffer, m_R);
@@ -488,29 +467,88 @@ public:
 			computeType = CUBLAS_COMPUTE_64F;
 		}
 
-		m_inverse_pth_root_graphs[idx*2+0].capture_and_execute(stream, true, [&]() {
-			// Compute c following section 3.2 of the paper http://eprints.ma.man.ac.uk/637/1/covered/MIMS_ep2005_9.pdf
-			{
-				// To upper bound the spectral radius of A, the authors propose using the matrix norm.
-				// We get a tighter upper bound at the cost of 2 matrix multiplications by using
-				//   lim k->inf (|A^k|^{1/k}) = spectral_radius(A)
-				// k=4 seems to give a reasonable amount of numerical stability and accuracy.
+		// Compute c following section 3.2 of the paper http://eprints.ma.man.ac.uk/637/1/covered/MIMS_ep2005_9.pdf
+		{
+			// To upper bound the spectral radius of A, the authors propose using the matrix norm.
+			// We get a tighter upper bound at the cost of 2 matrix multiplications by using
+			//   lim k->inf (|A^k|^{1/k}) = spectral_radius(A)
+			// k=4 seems to give a reasonable amount of numerical stability and accuracy.
 
-				// A^2
-				CUBLAS_CHECK_THROW(cublasGemmStridedBatchedEx(
-					m_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
-					M, M, M,
-					m_one_root,
-					Xk, dataType, M, n_elements,
-					Xk, dataType, M, n_elements,
-					m_zero_root,
-					tmp1, dataType, M, n_elements,
-					n_matrices,
-					computeType,
-					CUBLAS_GEMM_DEFAULT
-				));
+			// A^2
+			CUBLAS_CHECK_THROW(cublasGemmStridedBatchedEx(
+				m_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
+				M, M, M,
+				m_one_root,
+				Xk, dataType, M, n_elements,
+				Xk, dataType, M, n_elements,
+				m_zero_root,
+				tmp1, dataType, M, n_elements,
+				n_matrices,
+				computeType,
+				CUBLAS_GEMM_DEFAULT
+			));
 
-				// A^4
+			// A^4
+			CUBLAS_CHECK_THROW(cublasGemmStridedBatchedEx(
+				m_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
+				M, M, M,
+				m_one_root,
+				tmp1, dataType, M, n_elements,
+				tmp1, dataType, M, n_elements,
+				m_zero_root,
+				tmp2, dataType, M, n_elements,
+				n_matrices,
+				computeType,
+				CUBLAS_GEMM_DEFAULT
+			));
+
+			// Squared norm + 4th root of that
+			cudaMemsetAsync(sum_tmp, 0, n_matrices * sizeof(ROOT_TYPE), stream);
+			reduce_sum(tmp2, [] __device__ (ROOT_TYPE val) { return val * val; }, sum_tmp, n_elements, stream, n_matrices);
+		}
+
+		set_matrix<<<n_blocks_linear(n_elements*n_matrices), n_threads_linear, 0, stream>>>(n_elements*n_matrices, n_elements, Mk, Xk, sum_tmp, [] __device__ (ROOT_TYPE c) {
+			return std::sqrt((ROOT_TYPE)2.0) / std::pow(c, (ROOT_TYPE)(0.5 * 0.25));
+		}, n_matrices);
+		set_identity<<<n_blocks_linear(n_elements*n_matrices), n_threads_linear, 0, stream>>>(n_elements*n_matrices, M, Xk, sum_tmp, [] __device__ (ROOT_TYPE c) {
+			return std::pow(std::sqrt((ROOT_TYPE)2.0) / std::pow(c, (ROOT_TYPE)(0.5 * 0.25)), (ROOT_TYPE)0.25);
+		}, n_matrices);
+		linear_kernel(set_identity<ROOT_TYPE>, 0, stream, n_elements*n_matrices, M, I5, 5.0f, n_matrices);
+
+		// The iterations have the form
+		// X_{k+1} = X_k ( (5 I - M_k) / 4 ) , where X_0 = 1/c * I
+		// M_{k+1} = ( (5 I - M_k) / 4 )^4 M_k , where M_0 = 1/c^p * A
+
+		// tmp1 = (5I - Mk) / 4
+		linear_kernel(subtract<ROOT_TYPE>, 0, stream, n_elements*n_matrices, I5, Mk, tmp1, 0.25f);
+
+		// Xk+1 (one indirect copy to prevent the need for in-place operations)
+		linear_kernel(set_matrix<ROOT_TYPE>, 0, stream, n_elements*n_matrices, tmp2, Xk, 1.0f, n_matrices);
+		CUBLAS_CHECK_THROW(cublasGemmStridedBatchedEx(
+			m_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
+			M, M, M,
+			m_one_root,
+			tmp2, dataType, M, n_elements,
+			tmp1, dataType, M, n_elements,
+			m_zero_root,
+			Xk, dataType, M, n_elements,
+			n_matrices,
+			computeType,
+			CUBLAS_GEMM_DEFAULT
+		));
+
+		// Only check every couple of iterations whether we're converging...
+		// The check is expensive due to the CPU synchronization.
+		// 10 iterations appear to be sufficient most of the time.
+		static const uint32_t CHECK_INTERVAL = 5;
+
+		std::vector<ROOT_TYPE> delta(n_matrices, std::numeric_limits<ROOT_TYPE>::infinity());
+		ROOT_TYPE epsilon = (ROOT_TYPE)1e-20;
+
+		int i = 0;
+		while (true) {
+			for (int j = 0; j < CHECK_INTERVAL; ++j, ++i) {
+				// tmp1^2
 				CUBLAS_CHECK_THROW(cublasGemmStridedBatchedEx(
 					m_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
 					M, M, M,
@@ -524,121 +562,58 @@ public:
 					CUBLAS_GEMM_DEFAULT
 				));
 
-				// Squared norm + 4th root of that
-				cudaMemsetAsync(sum_tmp, 0, n_matrices * sizeof(ROOT_TYPE), stream);
-				reduce_sum(tmp2, [] __device__ (ROOT_TYPE val) { return val * val; }, sum_tmp, n_elements, stream, n_matrices);
+				// tmp2^2
+				CUBLAS_CHECK_THROW(cublasGemmStridedBatchedEx(
+					m_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
+					M, M, M,
+					m_one_root,
+					tmp2, dataType, M, n_elements,
+					tmp2, dataType, M, n_elements,
+					m_zero_root,
+					tmp1, dataType, M, n_elements,
+					n_matrices,
+					computeType,
+					CUBLAS_GEMM_DEFAULT
+				));
+
+				// Mk+1 (one indirect copy to prevent the need for in-place operations)
+				linear_kernel(set_matrix<ROOT_TYPE>, 0, stream, n_elements*n_matrices, tmp2, Mk, 1.0f, n_matrices);
+				CUBLAS_CHECK_THROW(cublasGemmStridedBatchedEx(
+					m_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
+					M, M, M,
+					m_one_root,
+					tmp1, dataType, M, n_elements,
+					tmp2, dataType, M, n_elements,
+					m_zero_root,
+					Mk, dataType, M, n_elements,
+					n_matrices,
+					computeType,
+					CUBLAS_GEMM_DEFAULT
+				));
+
+				// tmp1 = (5I - Mk) / 4
+				linear_kernel(subtract<ROOT_TYPE>, 0, stream, n_elements*n_matrices, I5, Mk, tmp1, 0.25f);
+
+				// Xk+1 (one indirect copy to prevent the need for in-place operations)
+				linear_kernel(set_matrix<ROOT_TYPE>, 0, stream, n_elements*n_matrices, tmp2, Xk, 1.0f, n_matrices);
+				CUBLAS_CHECK_THROW(cublasGemmStridedBatchedEx(
+					m_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
+					M, M, M,
+					m_one_root,
+					tmp2, dataType, M, n_elements,
+					tmp1, dataType, M, n_elements,
+					m_zero_root,
+					Xk, dataType, M, n_elements,
+					n_matrices,
+					computeType,
+					CUBLAS_GEMM_DEFAULT
+				));
 			}
 
-			set_matrix<<<n_blocks_linear(n_elements*n_matrices), n_threads_linear, 0, stream>>>(n_elements*n_matrices, n_elements, Mk, Xk, sum_tmp, [] __device__ (ROOT_TYPE c) {
-				return std::sqrt((ROOT_TYPE)2.0) / std::pow(c, (ROOT_TYPE)(0.5 * 0.25));
-			}, n_matrices);
-			set_identity<<<n_blocks_linear(n_elements*n_matrices), n_threads_linear, 0, stream>>>(n_elements*n_matrices, M, Xk, sum_tmp, [] __device__ (ROOT_TYPE c) {
-				return std::pow(std::sqrt((ROOT_TYPE)2.0) / std::pow(c, (ROOT_TYPE)(0.5 * 0.25)), (ROOT_TYPE)0.25);
-			}, n_matrices);
-			linear_kernel(set_identity<ROOT_TYPE>, 0, stream, n_elements*n_matrices, M, I5, 5.0f, n_matrices);
+			linear_kernel(subtract<ROOT_TYPE>, 0, stream, n_elements*n_matrices, Xk, tmp2, tmp2, 1.0f);
 
-			// The iterations have the form
-			// X_{k+1} = X_k ( (5 I - M_k) / 4 ) , where X_0 = 1/c * I
-			// M_{k+1} = ( (5 I - M_k) / 4 )^4 M_k , where M_0 = 1/c^p * A
-
-			// tmp1 = (5I - Mk) / 4
-			linear_kernel(subtract<ROOT_TYPE>, 0, stream, n_elements*n_matrices, I5, Mk, tmp1, 0.25f);
-
-			// Xk+1 (one indirect copy to prevent the need for in-place operations)
-			linear_kernel(set_matrix<ROOT_TYPE>, 0, stream, n_elements*n_matrices, tmp2, Xk, 1.0f, n_matrices);
-			CUBLAS_CHECK_THROW(cublasGemmStridedBatchedEx(
-				m_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
-				M, M, M,
-				m_one_root,
-				tmp2, dataType, M, n_elements,
-				tmp1, dataType, M, n_elements,
-				m_zero_root,
-				Xk, dataType, M, n_elements,
-				n_matrices,
-				computeType,
-				CUBLAS_GEMM_DEFAULT
-			));
-		});
-
-		// Only check every couple of iterations whether we're converging...
-		// The check is expensive due to the CPU synchronization.
-		// 10 iterations appear to be sufficient most of the time.
-		static const uint32_t CHECK_INTERVAL = 5;
-
-		std::vector<ROOT_TYPE> delta(n_matrices, std::numeric_limits<ROOT_TYPE>::infinity());
-		ROOT_TYPE epsilon = (ROOT_TYPE)1e-20;
-
-		int i = 0;
-		while (true) {
-			m_inverse_pth_root_graphs[idx*2+1].capture_and_execute(stream, true, [&]() {
-				for (int j = 0; j < CHECK_INTERVAL; ++j, ++i) {
-					// tmp1^2
-					CUBLAS_CHECK_THROW(cublasGemmStridedBatchedEx(
-						m_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
-						M, M, M,
-						m_one_root,
-						tmp1, dataType, M, n_elements,
-						tmp1, dataType, M, n_elements,
-						m_zero_root,
-						tmp2, dataType, M, n_elements,
-						n_matrices,
-						computeType,
-						CUBLAS_GEMM_DEFAULT
-					));
-
-					// tmp2^2
-					CUBLAS_CHECK_THROW(cublasGemmStridedBatchedEx(
-						m_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
-						M, M, M,
-						m_one_root,
-						tmp2, dataType, M, n_elements,
-						tmp2, dataType, M, n_elements,
-						m_zero_root,
-						tmp1, dataType, M, n_elements,
-						n_matrices,
-						computeType,
-						CUBLAS_GEMM_DEFAULT
-					));
-
-					// Mk+1 (one indirect copy to prevent the need for in-place operations)
-					linear_kernel(set_matrix<ROOT_TYPE>, 0, stream, n_elements*n_matrices, tmp2, Mk, 1.0f, n_matrices);
-					CUBLAS_CHECK_THROW(cublasGemmStridedBatchedEx(
-						m_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
-						M, M, M,
-						m_one_root,
-						tmp1, dataType, M, n_elements,
-						tmp2, dataType, M, n_elements,
-						m_zero_root,
-						Mk, dataType, M, n_elements,
-						n_matrices,
-						computeType,
-						CUBLAS_GEMM_DEFAULT
-					));
-
-					// tmp1 = (5I - Mk) / 4
-					linear_kernel(subtract<ROOT_TYPE>, 0, stream, n_elements*n_matrices, I5, Mk, tmp1, 0.25f);
-
-					// Xk+1 (one indirect copy to prevent the need for in-place operations)
-					linear_kernel(set_matrix<ROOT_TYPE>, 0, stream, n_elements*n_matrices, tmp2, Xk, 1.0f, n_matrices);
-					CUBLAS_CHECK_THROW(cublasGemmStridedBatchedEx(
-						m_cublas, CUBLAS_OP_N, CUBLAS_OP_N,
-						M, M, M,
-						m_one_root,
-						tmp2, dataType, M, n_elements,
-						tmp1, dataType, M, n_elements,
-						m_zero_root,
-						Xk, dataType, M, n_elements,
-						n_matrices,
-						computeType,
-						CUBLAS_GEMM_DEFAULT
-					));
-				}
-
-				linear_kernel(subtract<ROOT_TYPE>, 0, stream, n_elements*n_matrices, Xk, tmp2, tmp2, 1.0f);
-
-				CUDA_CHECK_THROW(cudaMemsetAsync(sum_tmp, 0, n_matrices * sizeof(ROOT_TYPE), stream));
-				reduce_sum(tmp2, [] __device__ (ROOT_TYPE val) { return val * val; }, sum_tmp, n_elements, stream, n_matrices);
-			});
+			CUDA_CHECK_THROW(cudaMemsetAsync(sum_tmp, 0, n_matrices * sizeof(ROOT_TYPE), stream));
+			reduce_sum(tmp2, [] __device__ (ROOT_TYPE val) { return val * val; }, sum_tmp, n_elements, stream, n_matrices);
 
 			CUDA_CHECK_THROW(cudaMemcpyAsync(delta.data(), sum_tmp, n_matrices * sizeof(ROOT_TYPE), cudaMemcpyDeviceToHost, stream));
 
@@ -680,7 +655,10 @@ public:
 		coefs.push_back(alpha_beta_shampoo.first);
 		coefs.push_back(alpha_beta_shampoo.second);
 
-		m_graph.capture_and_execute(stream, m_current_step-1 == 0, [&]() {
+		{
+			// CUDA graph capture only if not the first optimization step (in which some synchronous work needs to happen)
+			auto capture_guard = (m_current_step-1 == 0) ? ScopeGuard{} : m_graph.capture_guard(stream);
+
 			linear_kernel(shampoo_momentum_update_batched<T>, 0, stream,
 				m_n_weights,
 				loss_scale,
@@ -850,7 +828,7 @@ public:
 			for (auto& event : m_events) {
 				cudaStreamWaitEvent(stream, event, 0);
 			}
-		});
+		}
 
 		const uint32_t update_interval = m_current_step < 100 ? 10 : 200;
 		const uint32_t single_update_interval = update_interval / (uint32_t)m_matrix_batches.size();
@@ -911,10 +889,6 @@ public:
 
 	T* custom_weights() const override {
 		return nullptr;
-	}
-
-	uint32_t n_nested() const override {
-		return 0;
 	}
 
 	void update_hyperparams(const json& params) override {
@@ -999,9 +973,7 @@ private:
 	uint32_t m_n_weights;
 	uint32_t m_n_weights_covered_by_matrices = 0;
 
-	// Graphs
 	CudaGraph m_graph;
-	std::vector<CudaGraph> m_inverse_pth_root_graphs;
 
 	GPUMemory<float> m_coefficients;
 

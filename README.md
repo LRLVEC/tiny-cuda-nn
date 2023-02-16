@@ -45,7 +45,7 @@ using namespace tcnn;
 
 auto model = create_from_config(n_input_dims, n_output_dims, config);
 
-// Train the model
+// Train the model (batch_size must be a multiple of tcnn::batch_size_granularity)
 GPUMatrix<float> training_batch_inputs(n_input_dims, batch_size);
 GPUMatrix<float> training_batch_targets(n_output_dims, batch_size);
 
@@ -70,11 +70,11 @@ model.network->inference(inference_inputs, inference_outputs);
 
 We provide a sample application where an image function _(x,y) -> (R,G,B)_ is learned. It can be run via
 ```sh
-tiny-cuda-nn/build$ ./mlp_learning_an_image ../data/images/albert.jpg ../data/config_hash.json
+tiny-cuda-nn$ ./build/mlp_learning_an_image data/images/albert.jpg data/config_hash.json
 ```
-producing an image every 1000 training steps. Each 1000 steps should take roughly 0.42 seconds with the default configuration on an RTX 3090.
+producing an image every couple of training steps. Each 1000 steps should take a bit over 1 second with the default configuration on an RTX 4090.
 
-| 10 steps (4.2 ms) | 100 steps (42 ms) | 1000 steps (420 ms) | Reference image |
+| 10 steps | 100 steps | 1000 steps | Reference image |
 |:---:|:---:|:---:|:---:|
 | ![10steps](data/readme/10.jpg) | ![100steps](data/readme/100.jpg) | ![1000steps](data/readme/1000.jpg) | ![reference](data/images/albert.jpg) |
 
@@ -84,10 +84,13 @@ producing an image every 1000 training steps. Each 1000 steps should take roughl
 
 - An __NVIDIA GPU__; tensor cores increase performance when available. All shown results come from an RTX 3090.
 - A __C++14__ capable compiler. The following choices are recommended and have been tested:
-  - __Windows:__ Visual Studio 2019
-  - __Linux:__ GCC/G++ 7.5 or higher
-- __[CUDA](https://developer.nvidia.com/cuda-toolkit) v10.2 or higher__ and __[CMake](https://cmake.org/) v3.21 or higher__.
-- The fully fused MLP component of this framework requires a __very large__ amount of shared memory in its default configuration. It will likely only work on an RTX 3090, an RTX 2080 Ti, or high-end enterprise GPUs. Lower end cards must reduce the `n_neurons` parameter or use the `CutlassMLP` (better compatibility but slower) instead.
+  - __Windows:__ Visual Studio 2019 or 2022
+  - __Linux:__ GCC/G++ 8 or higher
+- A recent version of __[CUDA](https://developer.nvidia.com/cuda-toolkit)__. The following choices are recommended and have been tested:
+  - __Windows:__ CUDA 11.5 or higher
+  - __Linux:__ CUDA 10.2 or higher
+- __[CMake](https://cmake.org/) v3.21 or higher__.
+- The fully fused MLP component of this framework requires a __very large__ amount of shared memory in its default configuration. It will likely only work on an RTX 3090, an RTX 2080 Ti, or higher-end GPUs. Lower end cards must reduce the `n_neurons` parameter or use the `CutlassMLP` (better compatibility but slower) instead.
 
 If you are using Linux, install the following packages
 ```sh
@@ -116,14 +119,17 @@ tiny-cuda-nn$ cmake . -B build
 tiny-cuda-nn$ cmake --build build --config RelWithDebInfo -j
 ```
 
+If compilation fails inexplicably or takes longer than an hour, you might be running out of memory. Try running the above command without `-j` in that case.
+
 
 ## PyTorch extension
 
 __tiny-cuda-nn__ comes with a [PyTorch](https://github.com/pytorch/pytorch) extension that allows using the fast MLPs and input encodings from within a [Python](https://www.python.org/) context.
 These bindings can be significantly faster than full Python implementations; in particular for the [multiresolution hash encoding](https://raw.githubusercontent.com/NVlabs/tiny-cuda-nn/master/data/readme/multiresolution-hash-encoding-diagram.png).
 
-> The overheads of Python/PyTorch can nonetheless be extensive.
-> For example, the bundled `mlp_learning_an_image` example is __~2x slower__ through PyTorch than native CUDA.
+> The overheads of Python/PyTorch can nonetheless be extensive if the batch size is small.
+> For example, with a batch size of 64k, the bundled `mlp_learning_an_image` example is __~2x slower__ through PyTorch than native CUDA.
+> With a batch size of 256k and higher (default), the performance is much closer.
 
 Begin by setting up a Python 3.X environment with a recent, CUDA-enabled version of PyTorch. Then, invoke
 ```sh
@@ -219,7 +225,7 @@ If you use it in your research, we would appreciate a citation via
 	month = {4},
 	title = {{tiny-cuda-nn}},
 	url = {https://github.com/NVlabs/tiny-cuda-nn},
-	version = {1.6},
+	version = {1.7},
 	year = {2021}
 }
 ```
@@ -227,9 +233,9 @@ If you use it in your research, we would appreciate a citation via
 For business inquiries, please visit our website and submit the form: [NVIDIA Research Licensing](https://www.nvidia.com/en-us/research/inquiries/)
 
 
-## Publications
+## Publications & Software
 
-This framework powers the following publications:
+Among others, this framework powers the following publications:
 
 > __Instant Neural Graphics Primitives with a Multiresolution Hash Encoding__  
 > [Thomas Müller](https://tom94.net), [Alex Evans](https://research.nvidia.com/person/alex-evans), [Christoph Schied](https://research.nvidia.com/person/christoph-schied), [Alexander Keller](https://research.nvidia.com/person/alex-keller)  
@@ -246,6 +252,18 @@ This framework powers the following publications:
 > _ACM Transactions on Graphics (__SIGGRAPH__), August 2021_  
 > __[Paper](https://tom94.net/data/publications/mueller21realtime/mueller21realtime.pdf)&nbsp;/ [GTC talk](https://gtc21.event.nvidia.com/media/Fully%20Fused%20Neural%20Network%20for%20Radiance%20Caching%20in%20Real%20Time%20Rendering%20%5BE31307%5D/1_liqy6k1c)&nbsp;/ [Video](https://tom94.net/data/publications/mueller21realtime/mueller21realtime.mp4)&nbsp;/ [Interactive results viewer](https://tom94.net/data/publications/mueller21realtime/interactive-viewer/)&nbsp;/ [BibTeX](https://tom94.net/data/publications/mueller21realtime/mueller21realtime.bib)__
 
+
+As well as the following software:
+
+> __NerfAcc: A General NeRF Accleration Toolbox__  
+> [Ruilong Li](https://www.liruilong.cn/), [Matthew Tancik](https://www.matthewtancik.com/about-me), [Angjoo Kanazawa](https://people.eecs.berkeley.edu/~kanazawa/)  
+> __https://github.com/KAIR-BAIR/nerfacc__
+
+> __Nerfstudio: A Framework for Neural Radiance Field Development__  
+> [Matthew Tancik*](https://www.matthewtancik.com/about-me), [Ethan Weber*](https://ethanweber.me/), [Evonne Ng*](http://people.eecs.berkeley.edu/~evonne_ng/), [Ruilong Li](https://www.liruilong.cn/), Brent Yi, Terrance Wang, Alexander Kristoffersen, Jake Austin, Kamyar Salahi, Abhik Ahuja, David McAllister, [Angjoo Kanazawa](https://people.eecs.berkeley.edu/~kanazawa/)  
+> __https://github.com/nerfstudio-project/nerfstudio__
+
+Please feel free to make a pull request if your publication or software is not listed.
 
 ## Acknowledgments
 

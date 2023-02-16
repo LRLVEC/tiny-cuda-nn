@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2022, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification, are permitted
  * provided that the following conditions are met:
@@ -33,12 +33,6 @@
 #include <tiny-cuda-nn/object.h>
 
 TCNN_NAMESPACE_BEGIN
-
-enum class WeightUsage {
-	Inference,
-	Forward,
-	Backward,
-};
 
 Activation string_to_activation(const std::string& activation_name);
 std::string to_string(Activation activation);

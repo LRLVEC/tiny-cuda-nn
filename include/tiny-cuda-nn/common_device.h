@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2022, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without modification, are permitted
  * provided that the following conditions are met:
@@ -104,6 +104,12 @@ __host__ __device__ void warp_activation(Activation activation, const fragment_t
 				result.x[t] = (T)(logf(expf((float)frag.x[t] * K_ACT) + 1.0f) / K_ACT);
 			}
 			return;
+		case Activation::Tanh:
+			TCNN_PRAGMA_UNROLL
+			for (int t=0; t < result.num_elements; t++) {
+				result.x[t] = (T)(tanhf((float)frag.x[t]));
+			}
+			return;
 		case Activation::None: result = frag; return;
 		default:
 			// Unsupported activation
@@ -162,6 +168,13 @@ __host__ __device__ void warp_activation_backward_in(Activation activation, cons
 				result.x[t] = frag.x[t] * (T)(tmp / (tmp + 1));
 			}
 			return;
+		case Activation::Tanh:
+			TCNN_PRAGMA_UNROLL
+			for (int t=0; t < result.num_elements; t++) {
+				float x = tanhf(forward_frag_in.x[t]);
+				result.x[t] = frag.x[t] * (T)(1.0f - x * x);
+			}
+			return;
 		case Activation::None: result = frag; return;
 		default:
 			// Unsupported activation
@@ -200,7 +213,7 @@ __host__ __device__ void warp_activation_backward(Activation activation, const f
 		case Activation::Sigmoid:
 			TCNN_PRAGMA_UNROLL
 			for (int t=0; t < result.num_elements; t++) {
-				result.x[t] = frag.x[t] * (T)(forward_frag.x[t] * ((T)1.0f - forward_frag.x[t]));
+				result.x[t] = frag.x[t] * (T)(forward_frag.x[t] * (T)(1.0f - (float)forward_frag.x[t]));
 			}
 			return;
 		case Activation::Squareplus:
@@ -214,6 +227,12 @@ __host__ __device__ void warp_activation_backward(Activation activation, const f
 			TCNN_PRAGMA_UNROLL
 			for (int t=0; t < result.num_elements; t++) {
 				result.x[t] = frag.x[t] * (T)(1.0f - expf(-(float)forward_frag.x[t] * K_ACT));
+			}
+			return;
+		case Activation::Tanh:
+			TCNN_PRAGMA_UNROLL
+			for (int t=0; t < result.num_elements; t++) {
+				result.x[t] = frag.x[t] * (T)(1.0f - ((float)forward_frag.x[t] * (float)forward_frag.x[t]));
 			}
 			return;
 		case Activation::None: result = frag; return;

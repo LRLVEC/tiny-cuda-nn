@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2022, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or without modification, are permitted
 # provided that the following conditions are met:
@@ -24,7 +24,7 @@ cmake_minimum_required(VERSION 3.18)
 
 project(
 	tiny-cuda-nn
-	VERSION 1.6
+	VERSION 1.7
 	DESCRIPTION "Lightning fast & tiny C++/CUDA neural network framework"
 	LANGUAGES CXX CUDA
 )
@@ -32,6 +32,7 @@ project(
 option(TCNN_BUILD_BENCHMARK_IMAGE "Build tiny-cuda-nn example benchmark?" ON)
 option(TCNN_BUILD_BENCHMARK_MEMORY "Build tiny-cuda-nn memory benchmark?" ON)
 option(TCNN_BUILD_EXAMPLES "Build tiny-cuda-nn example applications?" ON)
+option(TCNN_ALLOW_CUBLAS_CUSOLVER "Allows tiny-cuda-nn to use cuBLAS and cuSolver. Only required for the Shampoo optimizer." OFF)
 set(TCNN_CUDA_ARCHITECTURES "" CACHE STRING "Build tiny-cuda-nn for a specific GPU architecture.")
 
 ###############################################################################
@@ -70,54 +71,117 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # CUDA compiler setup
 ###############################################################################
 
+# Figure out CUDA version
+if(CMAKE_CUDA_COMPILER_LOADED)
+	if (CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA" AND CMAKE_CUDA_COMPILER_VERSION MATCHES "^([0-9]+\\.[0-9]+)")
+		set(CUDA_VERSION "${CMAKE_MATCH_1}")
+	endif()
+endif()
+
+# Adapted from the CMake source code at https://github.com/Kitware/CMake/blob/master/Modules/FindCUDA/select_compute_arch.cmake
+# Simplified to return a semicolon-separated list of the compute capabilities of installed devices
+function(TCNN_AUTODETECT_CUDA_ARCHITECTURES OUT_VARIABLE)
+	if (NOT TCNN_AUTODETECT_CUDA_ARCHITECTURES_OUTPUT)
+		if (CMAKE_CUDA_COMPILER_LOADED) # CUDA as a language
+			set(file "${PROJECT_BINARY_DIR}/detect_tcnn_cuda_architectures.cu")
+		else()
+			set(file "${PROJECT_BINARY_DIR}/detect_tcnn_cuda_architectures.cpp")
+		endif()
+
+		file(WRITE ${file} ""
+			"#include <cuda_runtime.h>\n"
+			"#include <cstdio>\n"
+			"int main() {\n"
+			"	int count = 0;\n"
+			"	if (cudaSuccess != cudaGetDeviceCount(&count)) return -1;\n"
+			"	if (count == 0) return -1;\n"
+			"	for (int device = 0; device < count; ++device) {\n"
+			"		cudaDeviceProp prop;\n"
+			"		if (cudaSuccess == cudaGetDeviceProperties(&prop, device)) {\n"
+			"			std::printf(\"%d%d\", prop.major, prop.minor);\n"
+			"			if (device < count - 1) std::printf(\";\");\n"
+			"		}\n"
+			"	}\n"
+			"	return 0;\n"
+			"}\n"
+		)
+
+		if (CMAKE_CUDA_COMPILER_LOADED) # CUDA as a language
+			try_run(run_result compile_result ${PROJECT_BINARY_DIR} ${file} RUN_OUTPUT_VARIABLE compute_capabilities)
+		else()
+			try_run(
+				run_result compile_result ${PROJECT_BINARY_DIR} ${file}
+				CMAKE_FLAGS "-DINCLUDE_DIRECTORIES=${CUDA_INCLUDE_DIRS}"
+				LINK_LIBRARIES ${CUDA_LIBRARIES}
+				RUN_OUTPUT_VARIABLE compute_capabilities
+			)
+		endif()
+
+		if (run_result EQUAL 0)
+			# If the user has multiple GPUs with the same compute capability installed, list that capability only once.
+			list(REMOVE_DUPLICATES compute_capabilities)
+			set(TCNN_AUTODETECT_CUDA_ARCHITECTURES_OUTPUT ${compute_capabilities} CACHE INTERNAL "Returned GPU architectures from detect_gpus tool" FORCE)
+		endif()
+	endif()
+
+	if (NOT TCNN_AUTODETECT_CUDA_ARCHITECTURES_OUTPUT)
+		message(STATUS "Automatic GPU detection failed. Building for Turing and Ampere as a best guess.")
+		set(${OUT_VARIABLE} "75;86" PARENT_SCOPE)
+	else()
+		set(${OUT_VARIABLE} ${TCNN_AUTODETECT_CUDA_ARCHITECTURES_OUTPUT} PARENT_SCOPE)
+	endif()
+endfunction()
+
 set(CMAKE_CUDA_STANDARD 14)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS OFF)
 set(CUDA_LINK_LIBRARIES_KEYWORD PUBLIC)
 
 get_directory_property(TCNN_HAS_PARENT PARENT_DIRECTORY)
-
-# adapted from https://stackoverflow.com/a/69353718
-include(FindCUDA/select_compute_arch)
-CUDA_DETECT_INSTALLED_GPUS(INSTALLED_GPU_CCS_1)
-string(STRIP "${INSTALLED_GPU_CCS_1}" INSTALLED_GPU_CCS_2)
-string(REPLACE " " ";" INSTALLED_GPU_CCS_3 "${INSTALLED_GPU_CCS_2}")
-string(REPLACE "." "" CUDA_ARCH_LIST "${INSTALLED_GPU_CCS_3}")
-
 if (DEFINED ENV{TCNN_CUDA_ARCHITECTURES})
-	message(STATUS "Obtained target architecture from environment variable TCNN_CUDA_ARCHITECTURES=$ENV{TCNN_CUDA_ARCHITECTURES}")
+	message(STATUS "Obtained CUDA architectures from environment variable TCNN_CUDA_ARCHITECTURES=$ENV{TCNN_CUDA_ARCHITECTURES}")
 	set(CMAKE_CUDA_ARCHITECTURES $ENV{TCNN_CUDA_ARCHITECTURES})
 elseif (TCNN_CUDA_ARCHITECTURES)
-	message(STATUS "Obtained target architecture from CMake variable TCNN_CUDA_ARCHITECTURES=${TCNN_CUDA_ARCHITECTURES}")
+	message(STATUS "Obtained CUDA architectures from CMake variable TCNN_CUDA_ARCHITECTURES=${TCNN_CUDA_ARCHITECTURES}")
 	set(CMAKE_CUDA_ARCHITECTURES ${TCNN_CUDA_ARCHITECTURES})
 else()
-	set(CMAKE_CUDA_ARCHITECTURES ${CUDA_ARCH_LIST})
+	message(STATUS "Obtained CUDA architectures automatically from installed GPUs")
+	TCNN_AUTODETECT_CUDA_ARCHITECTURES(CMAKE_CUDA_ARCHITECTURES)
 endif()
-
-# Remove unsupported architectures
-list(FILTER CMAKE_CUDA_ARCHITECTURES EXCLUDE REGEX "PTX")
-list(REMOVE_DUPLICATES CMAKE_CUDA_ARCHITECTURES)
 
 # If the CUDA version does not support the chosen architecture, target
 # the latest supported one instead.
-set(LATEST_SUPPORTED_CUDA_ARCHITECTURE 90)
-
-if (CUDA_VERSION VERSION_LESS 11.8)
-	set(LATEST_SUPPORTED_CUDA_ARCHITECTURE 86)
-endif()
-
-if (CUDA_VERSION VERSION_LESS 11.1)
-	set(LATEST_SUPPORTED_CUDA_ARCHITECTURE 80)
-endif()
-
 if (CUDA_VERSION VERSION_LESS 11.0)
 	set(LATEST_SUPPORTED_CUDA_ARCHITECTURE 75)
+elseif (CUDA_VERSION VERSION_LESS 11.1)
+	set(LATEST_SUPPORTED_CUDA_ARCHITECTURE 80)
+elseif (CUDA_VERSION VERSION_LESS 11.8)
+	set(LATEST_SUPPORTED_CUDA_ARCHITECTURE 86)
+else()
+	set(LATEST_SUPPORTED_CUDA_ARCHITECTURE 90)
+endif()
+
+if (CUDA_VERSION VERSION_GREATER_EQUAL 12.0)
+	set(EARLIEST_SUPPORTED_CUDA_ARCHITECTURE 50)
+else()
+	set(EARLIEST_SUPPORTED_CUDA_ARCHITECTURE 20)
 endif()
 
 foreach (CUDA_CC IN LISTS CMAKE_CUDA_ARCHITECTURES)
 	if (CUDA_CC GREATER ${LATEST_SUPPORTED_CUDA_ARCHITECTURE})
-		message(WARNING "CUDA version ${CUDA_VERSION} is too low for architecture ${CUDA_CC}. Targeting architecture ${LATEST_SUPPORTED_CUDA_ARCHITECTURE} instead.")
+		message(WARNING "CUDA version ${CUDA_VERSION} is too low for detected architecture ${CUDA_CC}. Targeting the highest supported architecture ${LATEST_SUPPORTED_CUDA_ARCHITECTURE} instead.")
 		list(REMOVE_ITEM CMAKE_CUDA_ARCHITECTURES ${CUDA_CC})
+		if (NOT CMAKE_CUDA_ARCHITECTURES)
+			list(APPEND CMAKE_CUDA_ARCHITECTURES ${LATEST_SUPPORTED_CUDA_ARCHITECTURE})
+		endif()
+	endif()
+
+	if (CUDA_CC LESS ${EARLIEST_SUPPORTED_CUDA_ARCHITECTURE})
+		message(ERROR "CUDA version ${CUDA_VERSION} no longer supports detected architecture ${CUDA_CC}. Targeting the lowest supported architecture ${EARLIEST_SUPPORTED_CUDA_ARCHITECTURE} instead.")
+		list(REMOVE_ITEM CMAKE_CUDA_ARCHITECTURES ${CUDA_CC})
+		if (NOT CMAKE_CUDA_ARCHITECTURES)
+			list(APPEND CMAKE_CUDA_ARCHITECTURES ${EARLIEST_SUPPORTED_CUDA_ARCHITECTURE})
+		endif()
 	endif()
 endforeach(CUDA_CC)
 
@@ -131,7 +195,7 @@ list(GET CMAKE_CUDA_ARCHITECTURES 0 MIN_GPU_ARCH)
 
 string(REPLACE "-virtual" "" MIN_GPU_ARCH "${MIN_GPU_ARCH}")
 
-message(STATUS "Targeting GPU architectures: ${CMAKE_CUDA_ARCHITECTURES}")
+message(STATUS "Targeting CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 if (TCNN_HAS_PARENT)
 	set(TCNN_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES} PARENT_SCOPE)
 	set(TCNN_CUDA_VERSION ${CUDA_VERSION} PARENT_SCOPE)
@@ -149,10 +213,12 @@ if (CUDA_VERSION VERSION_LESS 10.2)
 	message(FATAL_ERROR "CUDA version too low. tiny-cuda-nn require CUDA 10.2 or higher.")
 endif()
 
+list(APPEND TCNN_LIBRARIES cuda)
 list(APPEND TCNN_DEFINITIONS -DTCNN_MIN_GPU_ARCH=${MIN_GPU_ARCH})
-if (CUDA_VERSION VERSION_GREATER_EQUAL 11.0)
+if (TCNN_ALLOW_CUBLAS_CUSOLVER AND CUDA_VERSION VERSION_GREATER_EQUAL 11.0)
 	# Only compile the shampoo optimizer if
 	# a new enough cuBLAS version is available.
+	list(APPEND TCNN_LIBRARIES cublas)
 	list(APPEND TCNN_DEFINITIONS -DTCNN_SHAMPOO)
 endif()
 
@@ -161,8 +227,8 @@ if (TCNN_HAS_PARENT)
 endif()
 
 if (MSVC)
+	list(APPEND CUDA_NVCC_FLAGS "-Xcompiler=/bigobj")
 else()
-	list(APPEND CUDA_NVCC_FLAGS "-Xcompiler=-mf16c")
 	list(APPEND CUDA_NVCC_FLAGS "-Xcompiler=-Wno-float-conversion")
 	list(APPEND CUDA_NVCC_FLAGS "-Xcompiler=-fno-strict-aliasing")
 	list(APPEND CUDA_NVCC_FLAGS "-Xcudafe=--diag_suppress=unrecognized_gcc_pragma")
@@ -175,15 +241,9 @@ list(APPEND CUDA_NVCC_FLAGS "--expt-relaxed-constexpr")
 # Dependencies
 ###############################################################################
 
-if (MSVC)
-else()
+if (NOT MSVC)
 	set(CUDA_TOOLKIT_ROOT_DIR /opt/cuda/targets/x86_64-linux)
 endif()
-find_library(
-	CUDA_CUBLASLT_LIBRARY cublasLt
-	${CUDA_TOOLKIT_ROOT_DIR}/lib64
-	${CUDA_TOOLKIT_ROOT_DIR}/lib
-)
 
 set(BUILD_SHARED_LIBS OFF)
 add_subdirectory("dependencies/fmt")
@@ -228,7 +288,7 @@ target_include_directories(tiny-cuda-nn PUBLIC
 	"dependencies/cutlass/tools/util/include"
 	"dependencies/fmt/include"
 )
-target_link_libraries(tiny-cuda-nn PUBLIC ${CUDA_LIBRARIES} cuda cublas fmt)
+target_link_libraries(tiny-cuda-nn PUBLIC ${CUDA_LIBRARIES} ${TCNN_LIBRARIES} fmt)
 
 if (TCNN_BUILD_EXAMPLES)
 	add_subdirectory("samples")
