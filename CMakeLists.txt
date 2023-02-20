@@ -280,13 +280,12 @@ endif()
 add_library(tiny-cuda-nn STATIC ${TCNN_SOURCES})
 target_compile_definitions(tiny-cuda-nn PUBLIC ${TCNN_DEFINITIONS})
 target_compile_options(tiny-cuda-nn PUBLIC $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_NVCC_FLAGS}>)
-target_include_directories(tiny-cuda-nn PUBLIC
-	"include"
-	"dependencies"
-	"dependencies/cutlass/include"
-	"dependencies/cutlass/tools/util/include"
-	"dependencies/fmt/include"
-)
+list(APPEND TCNN_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/include")
+list(APPEND TCNN_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/dependencies")
+list(APPEND TCNN_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/cutlass/include")
+list(APPEND TCNN_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/cutlass/tools/util/include")
+list(APPEND TCNN_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/fmt/include")
+target_include_directories(tiny-cuda-nn PUBLIC ${TCNN_INCLUDE_DIRECTORIES})
 target_link_libraries(tiny-cuda-nn PUBLIC ${CUDA_LIBRARIES} ${TCNN_LIBRARIES} fmt)
 
 if (TCNN_BUILD_EXAMPLES)
