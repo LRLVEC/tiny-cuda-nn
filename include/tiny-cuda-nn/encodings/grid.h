@@ -1463,7 +1463,7 @@ GridEncoding<T>* create_grid_encoding_templated_2(uint32_t n_dims_to_encode, con
 
 	// If higher-dimensional hash encodings are desired, corresponding switch cases can be added
 	switch (n_dims_to_encode) {
-		// case 1: return new GridEncodingTemplated<T, 1, N_FEATURES_PER_LEVEL, HASH_TYPE>{ TCNN_GRID_PARAMS };
+		case 1: return new GridEncodingTemplated<T, 1, N_FEATURES_PER_LEVEL, HASH_TYPE>{ TCNN_GRID_PARAMS };
 		case 2: return new GridEncodingTemplated<T, 2, N_FEATURES_PER_LEVEL, HASH_TYPE>{ TCNN_GRID_PARAMS };
 		case 3: return new GridEncodingTemplated<T, 3, N_FEATURES_PER_LEVEL, HASH_TYPE>{ TCNN_GRID_PARAMS };
 		case 4: return new GridEncodingTemplated<T, 4, N_FEATURES_PER_LEVEL, HASH_TYPE>{ TCNN_GRID_PARAMS };
