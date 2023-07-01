@@ -62,6 +62,20 @@ struct VectorFragment {
 	V x;
 };
 
+template <typename T>
+__host__ __device__ T relu(T val) {
+	return (T)max((float)val, 0.0f);
+}
+
+template <>
+inline __host__ __device__ __half relu(__half val) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+	return __hmax(val, (__half)0.0f);
+#else
+	return (__half)relu<float>((float)val);
+#endif
+}
+
 static constexpr float K_ACT = 10.0f;
 
 template <typename T, typename fragment_t>
@@ -70,7 +84,13 @@ __host__ __device__ void warp_activation(Activation activation, const fragment_t
 		case Activation::ReLU:
 			TCNN_PRAGMA_UNROLL
 			for (int t=0; t < result.num_elements; t++) {
-				result.x[t] = frag.x[t] * (T)((T)frag.x[t] > (T)0.0f);
+				result.x[t] = relu((T)frag.x[t]);
+			}
+			return;
+		case Activation::LeakyReLU:
+			TCNN_PRAGMA_UNROLL
+			for (int t=0; t < result.num_elements; t++) {
+				result.x[t] = frag.x[t] * (T)((T)frag.x[t] > (T)0.0f ? 1.0f : 0.01f);
 			}
 			return;
 		case Activation::Exponential:
@@ -132,6 +152,12 @@ __host__ __device__ void warp_activation_backward_in(Activation activation, cons
 			TCNN_PRAGMA_UNROLL
 			for (int t=0; t < result.num_elements; t++) {
 				result.x[t] = frag.x[t] * (T)(forward_frag_in.x[t] > (T)0.0f);
+			}
+			return;
+		case Activation::LeakyReLU:
+			TCNN_PRAGMA_UNROLL
+			for (int t=0; t < result.num_elements; t++) {
+				result.x[t] = frag.x[t] * (T)(forward_frag_in.x[t] > (T)0.0f ? 1.0f : 0.01f);
 			}
 			return;
 		case Activation::Exponential:
@@ -197,6 +223,12 @@ __host__ __device__ void warp_activation_backward(Activation activation, const f
 			TCNN_PRAGMA_UNROLL
 			for (int t=0; t < result.num_elements; t++) {
 				result.x[t] = frag.x[t] * (T)(forward_frag.x[t] > (T)0.0f);
+			}
+			return;
+		case Activation::LeakyReLU:
+			TCNN_PRAGMA_UNROLL
+			for (int t=0; t < result.num_elements; t++) {
+				result.x[t] = frag.x[t] * (T)(forward_frag.x[t] > (T)0.0f ? 1.0f : 0.01f);
 			}
 			return;
 		case Activation::Exponential:
