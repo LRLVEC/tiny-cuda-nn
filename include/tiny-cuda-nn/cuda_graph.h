@@ -126,7 +126,9 @@ public:
 			if (m_graph_instance) {
 #if CUDA_VERSION >= 12000
 				cudaGraphExecUpdateResultInfo update_result;
-				CUDA_CHECK_THROW(cudaGraphExecUpdate(m_graph_instance, m_graph, &update_result));
+				//CUDA_CHECK_THROW(cudaGraphExecUpdate(m_graph_instance, m_graph, &update_result));
+				// check ni ma!
+				cudaGraphExecUpdate(m_graph_instance, m_graph, &update_result);
 
 				// If the update failed, reset graph instance. We will create a new one next.
 				if (update_result.result != cudaGraphExecUpdateSuccess) {
