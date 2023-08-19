@@ -45,6 +45,8 @@
 #include <tuple>
 #include <unordered_map>
 #include <vector>
+#include <thread>
+#include <mutex>
 
 TCNN_NAMESPACE_BEGIN
 
@@ -495,6 +497,7 @@ public:
 	}
 
 	uint8_t* data() {
+		std::unique_lock<std::recursive_mutex> lock(m_mutex);
 		return m_fallback_memory ? m_fallback_memory->data() : (uint8_t*)m_base_address;
 	}
 
@@ -506,6 +509,7 @@ public:
 	// large enough to hold the requested number of bytes. Then allocates
 	// that memory.
 	size_t allocate(size_t n_bytes) {
+		std::unique_lock<std::recursive_mutex> lock(m_mutex);
 		// Permitting zero-sized allocations is error prone
 		if (n_bytes == 0) {
 			n_bytes = m_alignment;
@@ -533,6 +537,8 @@ public:
 	}
 
 	void free(size_t start) {
+		std::unique_lock<std::recursive_mutex> lock(m_mutex);
+
 		if (m_allocated_intervals.count(start) == 0) {
 			throw std::runtime_error{"Attempted to free arena memory that was not allocated."};
 		}
@@ -549,6 +555,7 @@ public:
 	}
 
 	void enlarge(size_t n_bytes) {
+		std::unique_lock<std::recursive_mutex> lock(m_mutex);
 		if (n_bytes <= m_size) {
 			return;
 		}
@@ -662,6 +669,7 @@ public:
 
 private:
 	void merge_adjacent_intervals() {
+		std::unique_lock<std::recursive_mutex> lock(m_mutex);
 		size_t j = 0;
 		for (size_t i = 1; i < m_free_intervals.size(); ++i) {
 			Interval& prev = m_free_intervals[j];
@@ -677,6 +685,7 @@ private:
 		m_free_intervals.resize(j+1);
 	}
 
+	std::recursive_mutex m_mutex;
 	std::vector<Interval> m_free_intervals;
 	std::unordered_map<size_t, size_t> m_allocated_intervals;
 

@@ -138,7 +138,8 @@ public:
 #else
 				cudaGraphExecUpdateResult update_result;
 				cudaGraphNode_t error_node;
-				CUDA_CHECK_THROW(cudaGraphExecUpdate(m_graph_instance, m_graph, &error_node, &update_result));
+				// CUDA_CHECK_THROW(
+				cudaGraphExecUpdate(m_graph_instance, m_graph, &error_node, &update_result);
 
 				// If the update failed, reset graph instance. We will create a new one next.
 				if (update_result != cudaGraphExecUpdateSuccess) {
