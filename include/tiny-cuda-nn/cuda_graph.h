@@ -40,6 +40,9 @@ TCNN_NAMESPACE_BEGIN
 
 class CudaGraph;
 
+static std::atomic<uint32_t> cuda_graph_all_captures = 0;
+static std::atomic_bool cuda_graph_capture_sync = false;
+
 inline std::deque<CudaGraph*>& current_captures() {
 	static thread_local std::deque<CudaGraph*> s_current_captures;
 	return s_current_captures;
@@ -93,6 +96,7 @@ public:
 
 		CUDA_CHECK_THROW(cudaStreamBeginCapture(stream, cudaStreamCaptureModeRelaxed));
 		current_captures().push_back(this);
+		cuda_graph_all_captures.fetch_add(1);
 
 		// Stop capturing again once the returned object goes out of scope
 		return ScopeGuard{[this, stream]() {
@@ -102,10 +106,10 @@ public:
 				throw std::runtime_error{"CudaGraph: must end captures in reverse order of creation."};
 			}
 			current_captures().pop_back();
+			cuda_graph_all_captures.fetch_sub(1);
 
-			if (m_synchronize_when_capture_done) {
+			if (cuda_graph_capture_sync.exchange(false)) {
 				CUDA_CHECK_THROW(cudaDeviceSynchronize());
-				m_synchronize_when_capture_done = false;
 			}
 
 			// Capture failed for some reason. Reset state and don't execute anything.
@@ -169,15 +173,15 @@ public:
 		}
 	}
 
-	void schedule_synchronize() {
-		m_synchronize_when_capture_done = true;
-	}
+	//void schedule_synchronize() {
+	//	m_synchronize_when_capture_done = true;
+	//}
 
 private:
 	cudaGraph_t m_graph = nullptr;
 	cudaGraphExec_t m_graph_instance = nullptr;
 
-	bool m_synchronize_when_capture_done = false;
+	//bool m_synchronize_when_capture_done = false;
 };
 
 TCNN_NAMESPACE_END

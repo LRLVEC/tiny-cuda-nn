@@ -600,8 +600,8 @@ public:
 		total_n_bytes_allocated() += n_bytes_to_allocate;
 
 		// Need to synchronize the device to make sure memory is available to all streams.
-		if (current_capture()) {
-			current_capture()->schedule_synchronize();
+		if (cuda_graph_all_captures.load()) {
+			cuda_graph_capture_sync.store(true);
 		} else {
 			CUDA_CHECK_THROW(cudaDeviceSynchronize());
 		}
