@@ -33,6 +33,7 @@
 
 #include <cuda.h>
 
+#include <atomic>
 #include <deque>
 #include <functional>
 
@@ -40,8 +41,8 @@ TCNN_NAMESPACE_BEGIN
 
 class CudaGraph;
 
-static std::atomic<uint32_t> cuda_graph_all_captures = 0;
-static std::atomic_bool cuda_graph_capture_sync = false;
+static std::atomic<uint32_t> cuda_graph_all_captures{0};
+static std::atomic_bool cuda_graph_capture_sync{false};
 
 inline std::deque<CudaGraph*>& current_captures() {
 	static thread_local std::deque<CudaGraph*> s_current_captures;
