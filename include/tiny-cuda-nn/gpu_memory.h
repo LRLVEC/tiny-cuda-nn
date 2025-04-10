@@ -82,6 +82,11 @@ public:
 		*this = std::move(other);
 	}
 
+	GPUMemory(std::vector<T>const& other, bool managed = false) : m_managed{managed} {
+		resize(other.size());
+		copy_from_host(other);
+	}
+
 	// Don't permit copy assignment to prevent performance accidents.
 	// Copy is permitted through an explicit copy constructor.
 	GPUMemory<T>& operator=(const GPUMemory<T>& other) = delete;
